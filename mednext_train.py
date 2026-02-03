@@ -66,23 +66,6 @@ class Args:
         for kwarg in kwargs:
             setattr(Args, kwarg, kwargs[kwarg])
  
-args = Args()
-load_arguments_from_json("train_args.json")
-
-
-torch.multiprocessing.set_sharing_strategy('file_system')
-set_determinism(args.seed)
-
-args.wandb_run_name = f'MedNeXt_fold-{args.fold}_' if args.all_samples_as_train == False \
-    else f'MedNeXt_full-training_'
-args.wandb_run_name += f'{args.max_epochs}-epochs_bs-{args.batch_size}_mednext-size-{args.mednext_size}_mednext-ksize-{args.mednext_ksize}_deep-sup-{args.deep_sup}_lr-{args.lr}_loss-type-{args.loss_type}_mean-batch-{args.mean_batch}_aug-type-{args.aug_type}_scheduler-{args.lr_scheduler}_seed-{args.seed}'
-
-args.wandb_run_name = f'DEBUGGING-{args.wandb_run_name}' if args.is_debugging==True else args.wandb_run_name
-wandb_logger = WandbLogger(
-    name=args.wandb_run_name, project=args.wandb_project_name,
-    config={f"{var_name}": f"{var_value}" for var_name, var_value in Args.__dict__.items() if not var_name.startswith('__')},
-)
-
 class TrainerModule(BaseTrainerModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -154,58 +137,80 @@ class DataModule(pl.LightningDataModule):
             pin_memory=args.pin_memory,
         )
 
-dm = DataModule()
+if __name__ == '__main__':
+    # Optimization for RTX 3050 Laptop / Tensor Cores
+    torch.set_float32_matmul_precision('high')
+    
+    # Global args setup
+    args = Args()
+    load_arguments_from_json("train_args.json")
 
-model = create_mednext_v1(
-    num_input_channels=4,
-    num_classes=3,
-    model_id=args.mednext_size,
-    kernel_size=args.mednext_ksize,
-    deep_supervision=args.deep_sup,
-    checkpoint_style='outside_block',
-)
-if args.mednext_ckpt:
-    assert args.mednext_ksize == 5
-    _model = create_mednext_v1(
+    torch.multiprocessing.set_sharing_strategy('file_system')
+    set_determinism(args.seed)
+
+    args.wandb_run_name = f'MedNeXt_fold-{args.fold}_' if args.all_samples_as_train == False \
+        else f'MedNeXt_full-training_'
+    args.wandb_run_name += f'{args.max_epochs}-epochs_bs-{args.batch_size}_mednext-size-{args.mednext_size}_mednext-ksize-{args.mednext_ksize}_deep-sup-{args.deep_sup}_lr-{args.lr}_loss-type-{args.loss_type}_mean-batch-{args.mean_batch}_aug-type-{args.aug_type}_scheduler-{args.lr_scheduler}_seed-{args.seed}'
+
+    args.wandb_run_name = f'DEBUGGING-{args.wandb_run_name}' if args.is_debugging==True else args.wandb_run_name
+    wandb_logger = WandbLogger(
+        name=args.wandb_run_name, project=args.wandb_project_name,
+        config={f"{var_name}": f"{var_value}" for var_name, var_value in Args.__dict__.items() if not var_name.startswith('__')},
+    )
+
+    dm = DataModule()
+
+    model = create_mednext_v1(
         num_input_channels=4,
         num_classes=3,
         model_id=args.mednext_size,
-        kernel_size=3,
+        kernel_size=args.mednext_ksize,
         deep_supervision=args.deep_sup,
         checkpoint_style='outside_block',
     )
-    ckpt = torch.load(args.mednext_ckpt, map_location='cpu')
-    for key in list(ckpt['state_dict'].keys()):
-        if key.startswith('model.'):
-            ckpt['state_dict'][key[6:]] = ckpt['state_dict'].pop(key)
-    _model.load_state_dict(ckpt['state_dict'])
-    
-    model = upkern_load_weights(model, _model)
+    if args.mednext_ckpt:
+        assert args.mednext_ksize == 5
+        _model = create_mednext_v1(
+            num_input_channels=4,
+            num_classes=3,
+            model_id=args.mednext_size,
+            kernel_size=3,
+            deep_supervision=args.deep_sup,
+            checkpoint_style='outside_block',
+        )
+        ckpt = torch.load(args.mednext_ckpt, map_location='cpu')
+        for key in list(ckpt['state_dict'].keys()):
+            if key.startswith('model.'):
+                ckpt['state_dict'][key[6:]] = ckpt['state_dict'].pop(key)
+        _model.load_state_dict(ckpt['state_dict'])
+        
+        model = upkern_load_weights(model, _model)
 
-module = TrainerModule(
-    model, get_loss_fn(args.loss_type, args.mean_batch), Activations(sigmoid=True),
-    [args.roi_x, args.roi_y, args.roi_z],
-    args.infer_overlap, args.sw_batch_size,
-)
+    module = TrainerModule(
+        model, get_loss_fn(args.loss_type, args.mean_batch), Activations(sigmoid=True),
+        [args.roi_x, args.roi_y, args.roi_z],
+        args.infer_overlap, args.sw_batch_size,
+    )
 
-list_callbacks = [checkpoint_callback, lr_monitor] if args.all_samples_as_train == False \
-    else [callback_save_last_only, lr_monitor]
+    list_callbacks = [checkpoint_callback, lr_monitor] if args.all_samples_as_train == False \
+        else [callback_save_last_only, lr_monitor]
 
-trainer = pl.Trainer(
-    gpus=args.n_gpus, max_epochs=args.max_epochs,
-    check_val_every_n_epoch=args.check_val_every_n_epoch,
-    log_every_n_steps=10,
-    callbacks=list_callbacks,
-    logger= wandb_logger,
-    precision=32,
-    amp_backend='native',
-    benchmark=True,
-    limit_val_batches=1.0 if args.all_samples_as_train == False else 0,
-    num_sanity_val_steps=2 if args.all_samples_as_train == False else 0,
-)
+    trainer = pl.Trainer(
+        accelerator='gpu', devices=args.n_gpus, 
+        max_epochs=args.max_epochs,
+        check_val_every_n_epoch=args.check_val_every_n_epoch,
+        log_every_n_steps=10,
+        callbacks=list_callbacks,
+        logger= wandb_logger,
+        precision=32,
+        amp_backend='native',
+        benchmark=True,
+        limit_val_batches=1.0 if args.all_samples_as_train == False else 0,
+        num_sanity_val_steps=2 if args.all_samples_as_train == False else 0,
+    )
 
-trainer.fit(module, dm)
-if args.all_samples_as_train == False:
-    trainer.test(module, dataloaders=dm.test_dataloader(), ckpt_path='best')
+    trainer.fit(module, dm)
+    if args.all_samples_as_train == False:
+        trainer.test(module, dataloaders=dm.test_dataloader(), ckpt_path='best')
 
-print("done_training")
+    print("done_training")

@@ -1,0 +1,16 @@
+{
+    "fold": 0,
+    "max_epochs": 100,
+    "batch_size": 1,
+    "preprocessed_data_dir": "D:/Projects/BioMbz-Optimizing-Brain-Tumor-Segmentation-with-MedNeXt-BraTS-2024-SSA-and-Pediatrics/preprocessed_data",
+    "json_brats2024_goat_fold": "D:/Projects/BioMbz-Optimizing-Brain-Tumor-Segmentation-with-MedNeXt-BraTS-2024-SSA-and-Pediatrics/dataset_folds.json",
+    "mednext_size": "S",
+    "mednext_ksize": 3,
+    "deep_sup": true,
+    "roi_x": 64,
+    "roi_y": 64,
+    "roi_z": 64,
+    "lr": 0.002,
+    "n_gpus": 1,
+    "wandb_project_name": "brats-low-vram"
+}

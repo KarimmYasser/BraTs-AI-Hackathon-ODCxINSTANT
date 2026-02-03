@@ -140,8 +140,9 @@ def preprocess_sample(directory, example_id, patch_size=[128, 128, 128], list_mo
 
 def collect_cropped_image_sizes(directory, example_ids, list_modalities=["t2f", "t1n", "t1c", "t2w"]):
     shapes = []
-    for example_id in example_ids:
-        _, _, _, image_shape = preprocess_sample(directory, example_id, list_modalities)
+    print("Collecting cropped image sizes to determine median patch size...")
+    for example_id in tqdm.tqdm(example_ids):
+        _, _, _, image_shape = preprocess_sample(directory, example_id, list_modalities=list_modalities)
         shapes.append(image_shape)
     
     shapes = np.array(shapes)

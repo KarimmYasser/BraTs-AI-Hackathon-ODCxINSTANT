@@ -1,0 +1,16 @@
+{
+    "fold": 0,
+    "max_epochs": 100,
+    "batch_size": 2,
+    "preprocessed_data_dir": "./preprocessed_data",
+    "json_brats2024_goat_fold": "./dataset_folds.json",
+    "mednext_size": "B",
+    "mednext_ksize": 3,
+    "deep_sup": true,
+    "roi_x": 128,
+    "roi_y": 128,
+    "roi_z": 128,
+    "lr": 0.0027,
+    "n_gpus": 1,
+    "wandb_project_name": "brats-custom-training"
+}
