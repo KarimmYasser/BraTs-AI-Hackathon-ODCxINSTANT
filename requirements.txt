@@ -16,7 +16,7 @@ opencv-contrib-python>=4.7.0.72
 
 # Machine Learning
 scikit-learn>=1.2.0
-wandb>=0.15.4
+wandb>=0.22.3
 schedulefree>=1.2.6
 pytorch-lightning>=2.1.0
 
