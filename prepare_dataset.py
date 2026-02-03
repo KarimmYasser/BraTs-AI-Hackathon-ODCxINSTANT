@@ -9,7 +9,7 @@ from pathlib import Path
 def prepare_dataset(source_dir, target_dir, num_folds=5):
     """
     Converts BraTS formatted dataset to the format expected by this repository.
-    Supports both .nii and .nii.gz files, but FORCES the output to be compressed .nii.gz.
+    Supports both .nii and .nii.gz files, and forces output to .nii.gz.
     """
     
     # Mapping from common suffixes to repo expected suffixes
@@ -29,7 +29,7 @@ def prepare_dataset(source_dir, target_dir, num_folds=5):
     
     # Iterate over subdirectories in source_dir
     sample_dirs = [d for d in source_path.iterdir() if d.is_dir()]
-    print(f"Found {len(sample_dirs)} samples in {source_dir}")
+    print(f"Found {len(sample_dirs)} sample directories in {source_dir}")
 
     for sample_dir in sample_dirs:
         sample_id = sample_dir.name
@@ -37,38 +37,44 @@ def prepare_dataset(source_dir, target_dir, num_folds=5):
         new_sample_dir.mkdir(parents=True, exist_ok=True)
 
         found_files = {}
-        # Look for both .nii and .nii.gz files
-        for ext in ["*.nii", "*.nii.gz"]:
-            for file in sample_dir.glob(ext):
-                stem = file.name
-                if stem.endswith(".nii.gz"):
-                    suffix_to_strip = ".nii.gz"
-                elif stem.endswith(".nii"):
-                    suffix_to_strip = ".nii"
+        # Collect all files in the current sample directory
+        all_files = list(sample_dir.glob("*"))
+        
+        for file in all_files:
+            filename = file.name.lower()
+            
+            # Identify extension and base name
+            if filename.endswith(".nii.gz"):
+                stem = file.name[:-7]
+                is_nii = False
+            elif filename.endswith(".nii"):
+                stem = file.name[:-4]
+                is_nii = True
+            else:
+                continue # Skip non-nifti files
+            
+            # Identify suffix by splitting on the LAST underscore
+            parts = stem.split("_")
+            suffix = parts[-1].lower()
+            
+            if suffix in mapping:
+                new_suffix = mapping[suffix]
+                new_filename = f"{sample_id}-{new_suffix}.nii.gz"
+                target_file = new_sample_dir / new_filename
                 
-                # Identify suffix by splitting on underscore and removing extension
-                parts = stem.replace(suffix_to_strip, "").split("_")
-                suffix = parts[-1]
+                if not target_file.exists():
+                    if is_nii:
+                        # Convert and compress .nii to .nii.gz
+                        print(f"[{sample_id}] Compressing {file.name} -> {new_filename}")
+                        img = nibabel.load(str(file))
+                        nibabel.save(img, str(target_file))
+                    else:
+                        # Already .nii.gz, just copy
+                        shutil.copy2(file, target_file)
                 
-                if suffix in mapping:
-                    new_suffix = mapping[suffix]
-                    # FORCE exactly .nii.gz for downstream compatibility
-                    new_filename = f"{sample_id}-{new_suffix}.nii.gz"
-                    target_file = new_sample_dir / new_filename
-                    
-                    if not target_file.exists():
-                        if file.suffix == ".nii":
-                            # Convert and compress .nii to .nii.gz
-                            print(f"Compressing {file.name} -> {new_filename}")
-                            img = nibabel.load(str(file))
-                            nibabel.save(img, str(target_file))
-                        else:
-                            # Already .nii.gz, just copy
-                            shutil.copy2(file, target_file)
-                    
-                    found_files[new_suffix] = f"{sample_id}/{new_filename}"
+                found_files[new_suffix] = f"{sample_id}/{new_filename}"
 
-        # Only add to training list if segmentation mask is present
+        # Validation and assembly
         if 'seg' in found_files:
             required = ['t2f', 't1c', 't1n', 't2w']
             if all(m in found_files for m in required):
@@ -84,9 +90,11 @@ def prepare_dataset(source_dir, target_dir, num_folds=5):
                 })
             else:
                 missing = [m for m in required if m not in found_files]
-                print(f"Warning: Missing modalities {missing} for {sample_id}, skipping.")
+                print(f"Warning: Sample {sample_id} missing modalities: {missing}")
         else:
-            print(f"Warning: Segmentation mask missing for {sample_id}, skipping.")
+            # Check what WAS found to help debug
+            found_keys = list(found_files.keys())
+            print(f"Warning: Segmentation mask ('seg') missing for {sample_id}. Found: {found_keys}")
 
     # Shuffle and assign folds
     random.seed(42)
@@ -98,7 +106,7 @@ def prepare_dataset(source_dir, target_dir, num_folds=5):
         "training": samples
     }
 
-    # Save the folds JSON in the current directory
+    # Save the folds JSON
     json_path = "dataset_folds.json"
     with open(json_path, "w") as f:
         json.dump(dataset_json, f, indent=4)
@@ -111,10 +119,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare BraTS dataset for training.")
     parser.add_argument("--source", type=str, required=True, help="Path to raw dataset")
     parser.add_argument("--target", type=str, required=True, help="Path to store prepared dataset")
-    parser.add_argument("--folds", type=int, default=5, help="Number of folds (default: 5)")
+    parser.add_argument("--folds", type=int, default=5, help="Number of folds")
     args = parser.parse_args()
 
-    # Expand paths to be absolute
     source_dir = os.path.abspath(args.source)
     target_dir = os.path.abspath(args.target)
 
