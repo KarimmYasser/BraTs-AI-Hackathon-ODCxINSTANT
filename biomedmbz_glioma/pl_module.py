@@ -32,6 +32,9 @@ class BaseTrainerModule(pl.LightningModule):
         self.acc_func = DiceMetricWithEmptyLabels(include_background=True, reduction=MetricReduction.MEAN_BATCH, get_not_nans=True)
         self.post_pred = ToDiscreteWithReplacingSmallET(threshold=0.5, min_et=200, min_tc=0)
         self.run_acc = AverageMeter()
+        
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
     
     def forward(self, x):
         return self.model.forward(x)
@@ -47,6 +50,38 @@ class BaseTrainerModule(pl.LightningModule):
         
         return loss
     
+    def on_train_epoch_start(self):
+        opts = self.optimizers()
+        if not isinstance(opts, (list, tuple)):
+            opts = [opts]
+        for opt in opts:
+            if hasattr(opt, 'train'):
+                opt.train()
+
+    def on_validation_epoch_start(self):
+        opts = self.optimizers()
+        if not isinstance(opts, (list, tuple)):
+            opts = [opts]
+        for opt in opts:
+            if hasattr(opt, 'eval'):
+                opt.eval()
+
+    def on_validation_epoch_end(self):
+        self.val_test_epoch_end("val", self.validation_step_outputs)
+        self.validation_step_outputs.clear()
+
+    def on_test_epoch_start(self):
+        opts = self.optimizers()
+        if not isinstance(opts, (list, tuple)):
+            opts = [opts]
+        for opt in opts:
+            if hasattr(opt, 'eval'):
+                opt.eval()
+
+    def on_test_epoch_end(self):
+        self.val_test_epoch_end("test", self.test_step_outputs)
+        self.test_step_outputs.clear()
+
     def validation_step(self, batch_data, batch_idx):
         data, target = batch_data['image'], batch_data['label']
         
@@ -65,7 +100,9 @@ class BaseTrainerModule(pl.LightningModule):
         acc, not_nans = self.acc_func.aggregate()
         self.run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
         
-        return {'sum_loss': len(data) * batch_loss, 'n_samples': len(data)}
+        output = {'sum_loss': len(data) * batch_loss, 'n_samples': len(data)}
+        self.validation_step_outputs.append(output)
+        return output
     
     def val_test_epoch_end(self, set_name, step_outputs):
         total_loss = np.array([output['sum_loss'] for output in step_outputs]).sum()
@@ -80,14 +117,28 @@ class BaseTrainerModule(pl.LightningModule):
         self.log(f"{set_name}_wt", dsc[1], prog_bar=True, logger=True)
         self.log(f"{set_name}_et", dsc[2], prog_bar=True, logger=True)
     
-    def validation_epoch_end(self, validation_step_outputs):
-        return self.val_test_epoch_end("val", validation_step_outputs)
-    
     def test_step(self, batch_data, batch_idx):
-        return self.validation_step(batch_data, batch_idx)
+        data, target = batch_data['image'], batch_data['label']
+        
+        logits = self.model_inferer(data)
+        
+        batch_loss = self.criterion(logits, target).cpu().item()
+        
+        heatmaps = self.post_sigmoid(logits)
+        
+        val_labels_list = [x for x in target]
+        val_outputs_list = [x for x in heatmaps]
+        val_output_convert = [self.post_pred(val_pred_tensor) for val_pred_tensor in val_outputs_list]
+        
+        self.acc_func.reset()
+        self.acc_func(y_pred=val_output_convert, y=val_labels_list)
+        acc, not_nans = self.acc_func.aggregate()
+        self.run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
+        
+        output = {'sum_loss': len(data) * batch_loss, 'n_samples': len(data)}
+        self.test_step_outputs.append(output)
+        return output
     
-    def test_epoch_end(self, test_step_outputs):
-        return self.val_test_epoch_end("test", test_step_outputs)
 
 class DeepSupBaseTrainerModule(BaseTrainerModule):
     def __init__(self, model, criterion, post_sigmoid, roi_size, infer_overlap, sw_batch_size,

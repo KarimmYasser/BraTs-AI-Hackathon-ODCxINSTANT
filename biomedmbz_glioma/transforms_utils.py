@@ -48,9 +48,17 @@ class ConvertToMultiChannelBasedOnBrats2023Classes(Transform):
             img = img.squeeze(0)
         
         
-        result = [(img == 1) | (img == 3), (img == 1) | (img == 3) | (img == 2), img == 3]
-        # merge labels 1 (tumor non-enh) and 3 (tumor enh) and 2 (large edema) to WT
-        # label 3 is ET
+        # BraTS Labels: 1 (Necrotic Core), 2 (Edema), 3/4 (Enhancing Tumor)
+        # Mapping to BraTS classes:
+        # TC (Tumor Core) = Necrotic Core + Enhancing Tumor
+        # WT (Whole Tumor) = Necrotic Core + Enhancing Tumor + Edema
+        # ET (Enhancing Tumor) = Enhancing Tumor
+        
+        tc = (img == 1) | (img == 3) | (img == 4)
+        wt = (img == 1) | (img == 2) | (img == 3) | (img == 4)
+        et = (img == 3) | (img == 4)
+        
+        result = [tc, wt, et]
         return torch.stack(result, dim=0) if isinstance(img, torch.Tensor) else np.stack(result, axis=0)
 
 # Reference:

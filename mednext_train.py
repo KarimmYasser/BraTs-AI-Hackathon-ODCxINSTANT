@@ -61,6 +61,7 @@ class Args:
     souping = False # added this for souping option
     check_val_every_n_epoch=1
     wandb_project_name='brats-souping'
+    save_dir='outputs'
 
     def __init__(self, **kwargs):
         for kwarg in kwargs:
@@ -102,7 +103,7 @@ class TrainerModule(BaseTrainerModule):
             raise ValueError(f"Learning rate scheduler '{args.lr_scheduler}' is not recognized ...")
         
         return [optimizer], [scheduler]
-
+    
 class DataModule(pl.LightningDataModule):
     def __init__(self):
         super().__init__()
@@ -155,6 +156,7 @@ if __name__ == '__main__':
     args.wandb_run_name = f'DEBUGGING-{args.wandb_run_name}' if args.is_debugging==True else args.wandb_run_name
     wandb_logger = WandbLogger(
         name=args.wandb_run_name, project=args.wandb_project_name,
+        save_dir=args.save_dir,
         config={f"{var_name}": f"{var_value}" for var_name, var_value in Args.__dict__.items() if not var_name.startswith('__')},
     )
 
@@ -203,8 +205,8 @@ if __name__ == '__main__':
         callbacks=list_callbacks,
         logger= wandb_logger,
         precision=32,
-        amp_backend='native',
         benchmark=True,
+        default_root_dir=args.save_dir,
         limit_val_batches=1.0 if args.all_samples_as_train == False else 0,
         num_sanity_val_steps=2 if args.all_samples_as_train == False else 0,
     )

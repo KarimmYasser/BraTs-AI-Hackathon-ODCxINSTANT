@@ -1,5 +1,5 @@
 # Core Dependencies (Python 3.10 Compatible)
-numpy>=1.24.0
+numpy>=1.24.0,<2.0.0
 pandas>=1.5.0
 matplotlib>=3.6.0
 PyYAML>=6.0.1
@@ -11,16 +11,16 @@ nibabel>=5.1.0
 monai>=1.3.0
 pynrrd>=1.0.0
 connected-components-3d>=3.12.1
-scikit-image>=0.19.0
-opencv-contrib-python>=4.7.0.72
+scikit-image>=0.19.0,<0.23.0
+opencv-contrib-python>=4.7.0.72,<4.9.0
 
 # Machine Learning
-scikit-learn>=1.2.0
+scikit-learn>=1.2.0,<1.5.0
 wandb>=0.22.3
 schedulefree>=1.2.6
 pytorch-lightning>=2.1.0
 
-# PyTorch (Defaulting to CUDA 11.8 for modern GPUs like RTX 3050)
+# PyTorch (CUDA compatible)
 torch>=2.1.0
 torchvision>=0.16.0
 torchaudio>=2.1.0
