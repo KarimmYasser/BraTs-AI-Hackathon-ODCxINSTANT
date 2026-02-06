@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brain Tumor Segmentation</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body data-api-base-url="">
+    <div class="app-container">
+      <header class="header">
+        <div class="header-content">
+          <div class="logo">
+            <svg
+              class="brain-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
+              />
+              <path
+                d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z"
+              />
+              <path
+                d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+              />
+            </svg>
+            <h1>Brain Tumor Segmentation</h1>
+          </div>
+          <div class="device-selector">
+            <label for="deviceSelect">Device:</label>
+            <select id="deviceSelect" class="device-select">
+              <option value="cpu">CPU</option>
+              <option value="cuda">CUDA</option>
+            </select>
+            <span class="device-status" id="deviceStatus"></span>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <!-- Upload Section -->
+        <section class="upload-section" id="uploadSection">
+          <h2>Upload MRI Modalities</h2>
+          <p class="section-description">
+            Upload the 4 required NIfTI (.nii or .nii.gz) files for segmentation
+          </p>
+
+          <div class="upload-grid">
+            <div class="upload-card" data-modality="t1">
+              <div class="upload-icon">T1</div>
+              <span class="upload-label">Native T1</span>
+              <input type="file" id="file-t1" accept=".nii,.nii.gz" hidden />
+              <div class="file-name" id="filename-t1">No file selected</div>
+              <div class="upload-status" id="status-t1"></div>
+            </div>
+
+            <div class="upload-card" data-modality="t1ce">
+              <div class="upload-icon">T1ce</div>
+              <span class="upload-label">Post-contrast T1</span>
+              <input type="file" id="file-t1ce" accept=".nii,.nii.gz" hidden />
+              <div class="file-name" id="filename-t1ce">No file selected</div>
+              <div class="upload-status" id="status-t1ce"></div>
+            </div>
+
+            <div class="upload-card" data-modality="t2">
+              <div class="upload-icon">T2</div>
+              <span class="upload-label">T2-weighted</span>
+              <input type="file" id="file-t2" accept=".nii,.nii.gz" hidden />
+              <div class="file-name" id="filename-t2">No file selected</div>
+              <div class="upload-status" id="status-t2"></div>
+            </div>
+
+            <div class="upload-card" data-modality="flair">
+              <div class="upload-icon">FLAIR</div>
+              <span class="upload-label">T2 FLAIR</span>
+              <input type="file" id="file-flair" accept=".nii,.nii.gz" hidden />
+              <div class="file-name" id="filename-flair">No file selected</div>
+              <div class="upload-status" id="status-flair"></div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="uploadBtn" disabled>
+            <span class="btn-text">Upload Files</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </section>
+
+        <!-- Model Selection -->
+        <section class="model-section hidden" id="modelSection">
+          <h2>Select Segmentation Model</h2>
+          <div class="model-grid">
+            <div class="model-card selected" data-model="unet">
+              <div class="model-icon">U</div>
+              <div class="model-info">
+                <h3>U-Net 3D</h3>
+                <p>3D U-Net architecture for volumetric segmentation</p>
+              </div>
+              <div class="model-check">✓</div>
+            </div>
+
+            <div class="model-card" data-model="segresnet">
+              <div class="model-icon">S</div>
+              <div class="model-info">
+                <h3>SegResNet</h3>
+                <p>Residual encoder-decoder network</p>
+              </div>
+              <div class="model-check">✓</div>
+            </div>
+
+            <div class="model-card" data-model="mednext">
+              <div class="model-icon">M</div>
+              <div class="model-info">
+                <h3>MedNeXt</h3>
+                <p>Transformer-inspired ConvNet (sliding window)</p>
+              </div>
+              <div class="model-check">✓</div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="segmentBtn">
+            <span class="btn-text">Run Segmentation</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section hidden" id="resultsSection">
+          <h2>Segmentation Results</h2>
+
+          <div class="results-header">
+            <div class="tumor-legend">
+              <div class="legend-item">
+                <span class="legend-color ncr"></span>
+                <span>NCR (Necrotic Core)</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color ed"></span>
+                <span>ED (Edema)</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color et"></span>
+                <span>ET (Enhancing Tumor)</span>
+              </div>
+            </div>
+
+            <div class="view-controls">
+              <div class="view-mode-toggle">
+                <button
+                  class="view-mode-btn active"
+                  id="btn2DView"
+                  data-view="2d"
+                >
+                  2D Slice
+                </button>
+                <button class="view-mode-btn" id="btn3DView" data-view="3d">
+                  3D Multi-View
+                </button>
+              </div>
+
+              <div class="overlay-toggle">
+                <label class="toggle">
+                  <input type="checkbox" id="overlayToggle" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+                <span>Show Overlay</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="statistics-grid" id="statsGrid">
+            <div class="stat-card">
+              <div class="stat-value" id="stat-ncr">0</div>
+              <div class="stat-label">NCR Voxels</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="stat-ed">0</div>
+              <div class="stat-label">ED Voxels</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="stat-et">0</div>
+              <div class="stat-label">ET Voxels</div>
+            </div>
+          </div>
+
+          <!-- 2D Slice Viewer -->
+          <div class="slice-viewer" id="sliceViewer2D">
+            <div class="slice-controls">
+              <button class="btn btn-icon" id="prevSlice">◀</button>
+              <input
+                type="range"
+                id="sliceSlider"
+                min="0"
+                max="127"
+                value="64"
+              />
+              <button class="btn btn-icon" id="nextSlice">▶</button>
+              <span class="slice-info"
+                >Slice: <span id="sliceNumber">64</span> /
+                <span id="totalSlices">128</span></span
+              >
+            </div>
+
+            <div class="images-grid">
+              <div class="image-card">
+                <div class="image-title">T1</div>
+                <img id="img-t1" alt="T1 slice" />
+              </div>
+              <div class="image-card">
+                <div class="image-title">T1ce</div>
+                <img id="img-t1ce" alt="T1ce slice" />
+              </div>
+              <div class="image-card">
+                <div class="image-title">T2</div>
+                <img id="img-t2" alt="T2 slice" />
+              </div>
+              <div class="image-card">
+                <div class="image-title">FLAIR</div>
+                <img id="img-flair" alt="FLAIR slice" />
+              </div>
+              <div class="image-card segmentation-card">
+                <div class="image-title">Segmentation</div>
+                <img id="img-segmentation" alt="Segmentation" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 3D Multi-View Display -->
+          <div class="multiview-display hidden" id="multiviewDisplay">
+            <div class="multiview-modality-select">
+              <label>Modality:</label>
+              <select id="multiviewModality">
+                <option value="flair">FLAIR</option>
+                <option value="t1">T1</option>
+                <option value="t1ce">T1ce</option>
+                <option value="t2">T2</option>
+              </select>
+            </div>
+
+            <div class="multiview-grid">
+              <!-- Axial View -->
+              <div class="multiview-panel">
+                <div class="multiview-header">
+                  <span class="multiview-title">Axial (Top-Down)</span>
+                  <span class="multiview-slice-info"
+                    >Slice: <span id="axialSliceNum">64</span></span
+                  >
+                </div>
+                <img id="img-axial" alt="Axial view" />
+                <div class="multiview-controls">
+                  <input
+                    type="range"
+                    id="axialSlider"
+                    min="0"
+                    max="127"
+                    value="64"
+                  />
+                </div>
+              </div>
+
+              <!-- Coronal View -->
+              <div class="multiview-panel">
+                <div class="multiview-header">
+                  <span class="multiview-title">Coronal (Front-Back)</span>
+                  <span class="multiview-slice-info"
+                    >Slice: <span id="coronalSliceNum">64</span></span
+                  >
+                </div>
+                <img id="img-coronal" alt="Coronal view" />
+                <div class="multiview-controls">
+                  <input
+                    type="range"
+                    id="coronalSlider"
+                    min="0"
+                    max="127"
+                    value="64"
+                  />
+                </div>
+              </div>
+
+              <!-- Sagittal View -->
+              <div class="multiview-panel">
+                <div class="multiview-header">
+                  <span class="multiview-title">Sagittal (Side)</span>
+                  <span class="multiview-slice-info"
+                    >Slice: <span id="sagittalSliceNum">64</span></span
+                  >
+                </div>
+                <img id="img-sagittal" alt="Sagittal view" />
+                <div class="multiview-controls">
+                  <input
+                    type="range"
+                    id="sagittalSlider"
+                    min="0"
+                    max="127"
+                    value="64"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-secondary" id="newScanBtn">
+            Analyze New Scan
+          </button>
+        </section>
+      </main>
+
+      <!-- Loading Overlay -->
+      <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <div class="loading-text" id="loadingText">Processing...</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
